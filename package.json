@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Workspace-isolated project and task management API",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
@@ -15,7 +17,8 @@
     "prisma:generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "setup": "node scripts/setup.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",
@@ -32,7 +35,8 @@
     "helmet": "^8.1.0",
     "joi": "^18.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "dotenv": "^16.6.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -51,10 +55,16 @@
     "typescript": "^5.9.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": ".",
     "testRegex": "src/.*\\.spec\\.ts$",
-    "transform": { "^.+\\.ts$": "ts-jest" },
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
     "testEnvironment": "node"
   }
 }
