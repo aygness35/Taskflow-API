@@ -1,4 +1,5 @@
-import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { ApiProperty, PartialType, IntersectionType } from '@nestjs/swagger';
+import { VersionDto } from '../../common/version.dto';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsIn, IsString, Length, MaxLength } from 'class-validator';
 import { Role } from '../../common/enums';
@@ -9,9 +10,12 @@ export class CreateWorkspaceDto {
   @Length(2, 100)
   name!: string;
 }
-export class UpdateWorkspaceDto extends PartialType(CreateWorkspaceDto, {
-  skipNullProperties: false,
-}) {}
+export class UpdateWorkspaceDto extends IntersectionType(
+  PartialType(CreateWorkspaceDto, {
+    skipNullProperties: false,
+  }),
+  VersionDto,
+) {}
 export class MemberRoleDto {
   @ApiProperty({ enum: [Role.ADMIN, Role.MEMBER] })
   @IsIn([Role.ADMIN, Role.MEMBER])

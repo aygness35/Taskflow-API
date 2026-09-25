@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { setupApp } from '../src/setup';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 describe('TaskFlow API', () => {
   let app: INestApplication;
@@ -30,6 +32,20 @@ describe('TaskFlow API', () => {
     await app?.close();
   });
   const api = () => request(app.getHttpServer());
+  async function version(
+    model: 'task' | 'project' | 'workspace' | 'comment',
+    id: string,
+  ) {
+    const row =
+      model === 'task'
+        ? await prisma.task.findUniqueOrThrow({ where: { id } })
+        : model === 'project'
+          ? await prisma.project.findUniqueOrThrow({ where: { id } })
+          : model === 'workspace'
+            ? await prisma.workspace.findUniqueOrThrow({ where: { id } })
+            : await prisma.comment.findUniqueOrThrow({ where: { id } });
+    return { expectedUpdatedAt: row.updatedAt.toISOString() };
+  }
   const bearer = (token: string) => `Bearer ${token}`;
 
   it('registers users, logs in and protects profile routes', async () => {
@@ -119,6 +135,81 @@ describe('TaskFlow API', () => {
       .expect(401);
     const tokens = await prisma.refreshToken.findMany();
     expect(tokens.every((t) => /^[a-f0-9]{64}$/.test(t.tokenHash))).toBe(true);
+  });
+
+  it('rejects forged, expired and incorrectly scoped access tokens', async () => {
+    const jwt = app.get(JwtService);
+    const secret = app.get(ConfigService).getOrThrow<string>('JWT_SECRET');
+    const base = {
+      secret,
+      issuer: 'taskflow',
+      audience: 'taskflow-api',
+      expiresIn: 60,
+    };
+    const tokens = await Promise.all([
+      jwt.signAsync(
+        { sub: aliceId, type: 'access' },
+        { ...base, secret: 'attacker-controlled-secret' },
+      ),
+      jwt.signAsync(
+        { sub: aliceId, type: 'access' },
+        { ...base, expiresIn: -1 },
+      ),
+      jwt.signAsync(
+        { sub: aliceId, type: 'access' },
+        { ...base, issuer: 'other-app' },
+      ),
+      jwt.signAsync(
+        { sub: aliceId, type: 'access' },
+        { ...base, audience: 'other-api' },
+      ),
+      jwt.signAsync(
+        { sub: aliceId, type: 'access' },
+        { ...base, algorithm: 'HS384' },
+      ),
+      jwt.signAsync({ sub: aliceId, type: 'refresh' }, base),
+    ]);
+    for (const token of [...tokens, 'invalid.jwt.value']) {
+      await api()
+        .get('/users/me')
+        .set('Authorization', bearer(token))
+        .expect(401);
+    }
+    await api()
+      .get('/users/me')
+      .set('Authorization', `${bearer(alice)} extra`)
+      .expect(401);
+    await api()
+      .patch('/users/me')
+      .set('Authorization', bearer(alice))
+      .send({ name: 'Elevated', role: 'OWNER', password: 'Replacement1!' })
+      .expect(400);
+    const unchanged = await api()
+      .get('/users/me')
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(unchanged.body.name).toBe('Alice Updated');
+    expect(unchanged.body).not.toHaveProperty('password');
+  });
+
+  it('consumes a refresh token only once under concurrent requests', async () => {
+    const login = await api()
+      .post('/auth/login')
+      .send({ email: 'alice@example.com', password })
+      .expect(200);
+    const results = await Promise.all(
+      [0, 1].map(() =>
+        api()
+          .post('/auth/refresh')
+          .send({ refreshToken: login.body.refreshToken }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+    const winner = results.find((r) => r.status === 200)!;
+    await api()
+      .post('/auth/logout')
+      .send({ refreshToken: winner.body.refreshToken })
+      .expect(204);
   });
 
   it('creates a workspace and nested resources with an automatic owner membership', async () => {
@@ -239,17 +330,18 @@ describe('TaskFlow API', () => {
       .expect(403);
     await api()
       .delete(`/workspaces/${workspace}`)
+      .query(await version('workspace', workspace))
       .set('Authorization', bearer(bob))
       .expect(403);
     await api()
       .patch(`/tasks/${task}`)
       .set('Authorization', bearer(bob))
-      .send({ status: 'DONE' })
+      .send({ status: 'DONE', ...(await version('task', task)) })
       .expect(200);
     await api()
       .patch(`/tasks/${task}`)
       .set('Authorization', bearer(bob))
-      .send({ status: 'TODO' })
+      .send({ status: 'TODO', ...(await version('task', task)) })
       .expect(200);
     for (const body of [
       { status: 'INVALID' },
@@ -261,7 +353,7 @@ describe('TaskFlow API', () => {
       await api()
         .patch(`/tasks/${task}`)
         .set('Authorization', bearer(bob))
-        .send(body)
+        .send({ ...body, ...(await version('task', task)) })
         .expect(400);
     }
     await api()
@@ -289,12 +381,18 @@ describe('TaskFlow API', () => {
     await api()
       .patch(`/comments/${comment}`)
       .set('Authorization', bearer(alice))
-      .send({ content: 'Changed by owner' })
+      .send({
+        content: 'Changed by owner',
+        ...(await version('comment', comment)),
+      })
       .expect(403);
     await api()
       .patch(`/comments/${comment}`)
       .set('Authorization', bearer(bob))
-      .send({ content: 'Updated by author' })
+      .send({
+        content: 'Updated by author',
+        ...(await version('comment', comment)),
+      })
       .expect(200);
     const ownerTask = (
       await api()
@@ -305,6 +403,7 @@ describe('TaskFlow API', () => {
     ).body.id;
     await api()
       .delete(`/tasks/${ownerTask}`)
+      .query(await version('task', ownerTask))
       .set('Authorization', bearer(bob))
       .expect(403);
     const ownerComment = (
@@ -316,6 +415,7 @@ describe('TaskFlow API', () => {
     ).body.id;
     await api()
       .delete(`/comments/${ownerComment}`)
+      .query(await version('comment', ownerComment))
       .set('Authorization', bearer(bob))
       .expect(403);
   });
@@ -344,6 +444,315 @@ describe('TaskFlow API', () => {
       .set('Authorization', bearer(bob))
       .expect(200);
     expect(comments.body.meta.total).toBe(2);
+  });
+
+  it('rejects ambiguous and unsupported dates without writing data', async () => {
+    const before = await prisma.task.findUniqueOrThrow({ where: { id: task } });
+    for (const value of [
+      '2099-W01-1',
+      '2099-01-01',
+      '2099-01-01T12:00:00',
+      '2099-02-30T12:00:00Z',
+    ]) {
+      for (const field of ['dueDate', 'expectedUpdatedAt']) {
+        await api()
+          .patch(`/tasks/${task}`)
+          .set('Authorization', bearer(alice))
+          .send({
+            expectedUpdatedAt: before.updatedAt.toISOString(),
+            [field]: value,
+          })
+          .expect(400);
+      }
+    }
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: task } }),
+    ).toEqual(before);
+  });
+
+  it('normalizes offset deadlines and refreshes lists, details and totals after mutations', async () => {
+    const created = await api()
+      .post(`/projects/${project}/tasks`)
+      .set('Authorization', bearer(alice))
+      .send({ title: 'Freshness probe', dueDate: '2099-01-01T12:00:00+03:00' })
+      .expect(201);
+    const id = created.body.id;
+    expect(created.body.dueDate).toBe('2099-01-01T09:00:00.000Z');
+    for (const status of ['IN_PROGRESS', 'IN_REVIEW', 'DONE', 'TODO']) {
+      const edited = await api()
+        .patch(`/tasks/${id}`)
+        .set('Authorization', bearer(bob))
+        .send({ status, ...(await version('task', id)) })
+        .expect(200);
+      const detail = await api()
+        .get(`/tasks/${id}`)
+        .set('Authorization', bearer(alice))
+        .expect(200);
+      const list = await api()
+        .get(`/projects/${project}/tasks?search=Freshness&status=${status}`)
+        .set('Authorization', bearer(alice))
+        .expect(200);
+      expect(detail.body).toEqual(edited.body);
+      expect(list.body.data).toEqual([edited.body]);
+      expect(list.body.meta.total).toBe(1);
+    }
+    await api()
+      .patch(`/tasks/${id}/assign`)
+      .set('Authorization', bearer(alice))
+      .send({ assigneeId: bobId, ...(await version('task', id)) })
+      .expect(200);
+    const cleared = await api()
+      .patch(`/tasks/${id}`)
+      .set('Authorization', bearer(alice))
+      .send({
+        assigneeId: null,
+        description: null,
+        dueDate: null,
+        ...(await version('task', id)),
+      })
+      .expect(200);
+    expect(cleared.body).toMatchObject({
+      assigneeId: null,
+      description: null,
+      dueDate: null,
+    });
+    await api()
+      .delete(`/tasks/${id}`)
+      .query(await version('task', id))
+      .set('Authorization', bearer(alice))
+      .expect(204);
+    const empty = await api()
+      .get(`/projects/${project}/tasks?search=Freshness`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(empty.body).toMatchObject({
+      data: [],
+      meta: { total: 0, totalPages: 0 },
+    });
+    await api()
+      .get(`/tasks/${id}`)
+      .set('Authorization', bearer(alice))
+      .expect(403);
+  });
+
+  it('rejects stale edits on every versioned resource and concurrent task assignment', async () => {
+    for (const [url, data, token, current] of [
+      [
+        `/workspaces/${workspace}`,
+        { name: 'Updated engineering' },
+        alice,
+        await prisma.workspace.findUniqueOrThrow({ where: { id: workspace } }),
+      ],
+      [
+        `/projects/${project}`,
+        { description: 'Updated project' },
+        alice,
+        await prisma.project.findUniqueOrThrow({ where: { id: project } }),
+      ],
+      [
+        `/comments/${comment}`,
+        { content: 'Updated comment' },
+        bob,
+        await prisma.comment.findUniqueOrThrow({ where: { id: comment } }),
+      ],
+    ] as const) {
+      const body = {
+        ...data,
+        expectedUpdatedAt: current.updatedAt.toISOString(),
+      };
+      const saved = await api()
+        .patch(url)
+        .set('Authorization', bearer(token))
+        .send(body)
+        .expect(200);
+      expect(Date.parse(saved.body.updatedAt)).toBeGreaterThan(
+        current.updatedAt.getTime(),
+      );
+      await api()
+        .patch(url)
+        .set('Authorization', bearer(token))
+        .send(body)
+        .expect(409);
+    }
+    const current = await prisma.task.findUniqueOrThrow({
+      where: { id: task },
+    });
+    const results = await Promise.all(
+      [alice, bob].map((token) =>
+        api()
+          .patch(`/tasks/${task}/assign`)
+          .set('Authorization', bearer(token))
+          .send({
+            assigneeId: bobId,
+            expectedUpdatedAt: current.updatedAt.toISOString(),
+          }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    const winner = results.find((r) => r.status === 200)!;
+    const detail = await api()
+      .get(`/tasks/${task}`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(detail.body).toEqual(winner.body);
+  });
+
+  it('does not cache private responses or mask database write failures as success', async () => {
+    const privateResponse = await api()
+      .get(`/tasks/${task}`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(privateResponse.headers['cache-control']).toBe('no-store');
+    const before = await prisma.project.findUniqueOrThrow({
+      where: { id: project },
+    });
+    const failure = jest
+      .spyOn(prisma.project, 'update')
+      .mockRejectedValueOnce(new Error('isolated database outage'));
+    try {
+      const response = await api()
+        .patch(`/projects/${project}`)
+        .set('Authorization', bearer(alice))
+        .send({
+          name: 'Must not persist',
+          ...(await version('project', project)),
+        })
+        .expect(500);
+      expect(response.body.message).toBe('Internal server error');
+      expect(response.headers['cache-control']).toBe('no-store');
+    } finally {
+      failure.mockRestore();
+    }
+    expect(
+      await prisma.project.findUniqueOrThrow({ where: { id: project } }),
+    ).toEqual(before);
+  });
+
+  it('keeps pagination stable and reflects comment/project deletion immediately', async () => {
+    const p = await api()
+      .post(`/workspaces/${workspace}/projects`)
+      .set('Authorization', bearer(alice))
+      .send({ name: 'Disposable project' })
+      .expect(201);
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const t = await api()
+        .post(`/projects/${p.body.id}/tasks`)
+        .set('Authorization', bearer(alice))
+        .send({ title: 'Identical title' })
+        .expect(201);
+      ids.push(t.body.id);
+    }
+    const pages: string[] = [];
+    for (let page = 1; page <= 3; page++) {
+      const result = await api()
+        .get(`/projects/${p.body.id}/tasks?sortBy=title&limit=1&page=${page}`)
+        .set('Authorization', bearer(alice))
+        .expect(200);
+      pages.push(result.body.data[0].id);
+      expect(result.body.meta.total).toBe(3);
+    }
+    expect(pages).toEqual([...ids].sort());
+    const c = await api()
+      .post(`/tasks/${ids[0]}/comments`)
+      .set('Authorization', bearer(alice))
+      .send({ content: 'Temporary comment' })
+      .expect(201);
+    await api()
+      .delete(`/comments/${c.body.id}`)
+      .query(await version('comment', c.body.id))
+      .set('Authorization', bearer(alice))
+      .expect(204);
+    const comments = await api()
+      .get(`/tasks/${ids[0]}/comments`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(comments.body).toMatchObject({ data: [], meta: { total: 0 } });
+    await api()
+      .delete(`/projects/${p.body.id}`)
+      .query(await version('project', p.body.id))
+      .set('Authorization', bearer(alice))
+      .expect(204);
+    expect(await prisma.task.count({ where: { projectId: p.body.id } })).toBe(
+      0,
+    );
+    const projects = await api()
+      .get(`/workspaces/${workspace}/projects`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(
+      projects.body.data.some(
+        (entry: { id: string }) => entry.id === p.body.id,
+      ),
+    ).toBe(false);
+    expect(projects.body.meta.total).toBe(1);
+  });
+
+  it('requires versions and prevents stale deletion for every versioned resource', async () => {
+    const w = (
+      await api()
+        .post('/workspaces')
+        .set('Authorization', bearer(alice))
+        .send({ name: 'Version checks' })
+        .expect(201)
+    ).body;
+    const p = (
+      await api()
+        .post(`/workspaces/${w.id}/projects`)
+        .set('Authorization', bearer(alice))
+        .send({ name: 'Version checks' })
+        .expect(201)
+    ).body;
+    const t = (
+      await api()
+        .post(`/projects/${p.id}/tasks`)
+        .set('Authorization', bearer(alice))
+        .send({ title: 'Version checks' })
+        .expect(201)
+    ).body;
+    const c = (
+      await api()
+        .post(`/tasks/${t.id}/comments`)
+        .set('Authorization', bearer(alice))
+        .send({ content: 'Version checks' })
+        .expect(201)
+    ).body;
+    for (const [model, url, row, data] of [
+      ['comment', `/comments/${c.id}`, c, { content: 'Changed' }],
+      ['task', `/tasks/${t.id}`, t, { title: 'Changed' }],
+      ['project', `/projects/${p.id}`, p, { name: 'Changed' }],
+      ['workspace', `/workspaces/${w.id}`, w, { name: 'Changed' }],
+    ] as const) {
+      await api()
+        .patch(url)
+        .set('Authorization', bearer(alice))
+        .send(data)
+        .expect(400);
+      await api().delete(url).set('Authorization', bearer(alice)).expect(400);
+      expect((await version(model, row.id)).expectedUpdatedAt).toBe(
+        row.updatedAt,
+      );
+      const saved = (
+        await api()
+          .patch(url)
+          .set('Authorization', bearer(alice))
+          .send({ ...data, expectedUpdatedAt: row.updatedAt })
+          .expect(200)
+      ).body;
+      await api()
+        .delete(url)
+        .set('Authorization', bearer(alice))
+        .query({ expectedUpdatedAt: row.updatedAt })
+        .expect(409);
+      expect((await version(model, row.id)).expectedUpdatedAt).toBe(
+        saved.updatedAt,
+      );
+      await api()
+        .delete(url)
+        .set('Authorization', bearer(alice))
+        .query({ expectedUpdatedAt: saved.updatedAt })
+        .expect(204);
+    }
   });
 
   it('prevents admin escalation and protects the owner', async () => {
@@ -376,12 +785,13 @@ describe('TaskFlow API', () => {
       .expect(403);
     await api()
       .delete(`/workspaces/${workspace}`)
+      .query(await version('workspace', workspace))
       .set('Authorization', bearer(bob))
       .expect(403);
     await api()
       .patch(`/projects/${project}`)
       .set('Authorization', bearer(bob))
-      .send({ status: 'ARCHIVED' })
+      .send({ status: 'ARCHIVED', ...(await version('project', project)) })
       .expect(200);
   });
 
@@ -457,6 +867,7 @@ describe('TaskFlow API', () => {
   it('cascades workspace deletion across projects, tasks, and comments', async () => {
     await api()
       .delete(`/workspaces/${workspace}`)
+      .query(await version('workspace', workspace))
       .set('Authorization', bearer(alice))
       .expect(204);
     expect(await prisma.project.count()).toBe(0);

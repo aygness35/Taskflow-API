@@ -1,4 +1,9 @@
-import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ApiPropertyOptional,
+  PartialType,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { VersionDto } from '../../common/version.dto';
 import { IsEnum, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { CreateWorkspaceDto } from '../../workspaces/dto/workspace.dto';
 import { PaginationDto } from '../../common/pagination.dto';
@@ -14,9 +19,12 @@ export class CreateProjectDto extends CreateWorkspaceDto {
   @IsEnum(ProjectStatus)
   status?: ProjectStatus;
 }
-export class UpdateProjectDto extends PartialType(CreateProjectDto, {
-  skipNullProperties: false,
-}) {}
+export class UpdateProjectDto extends IntersectionType(
+  PartialType(CreateProjectDto, {
+    skipNullProperties: false,
+  }),
+  VersionDto,
+) {}
 export class ListProjectsDto extends PaginationDto {
   @ApiPropertyOptional({ enum: ProjectStatus })
   @ValidateIf((_o, v) => v !== undefined)

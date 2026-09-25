@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { versionMatch, versionStamp, withVersion } from '../common/version';
 import { Access } from '../common/decorators';
 import { Role } from '../common/enums';
 import { publicUserSelect } from '../users/user.entity';
@@ -35,10 +36,20 @@ export class WorkspacesService {
     return this.prisma.workspace.findUniqueOrThrow({ where: { id } });
   }
   update(id: string, dto: UpdateWorkspaceDto) {
-    return this.prisma.workspace.update({ where: { id }, data: dto });
+    const { expectedUpdatedAt, ...data } = dto;
+    return withVersion(expectedUpdatedAt, () =>
+      this.prisma.workspace.update({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+        data: { ...data, ...versionStamp(expectedUpdatedAt) },
+      }),
+    );
   }
-  async remove(id: string) {
-    await this.prisma.workspace.delete({ where: { id } });
+  async remove(id: string, expectedUpdatedAt: string) {
+    await withVersion(expectedUpdatedAt, () =>
+      this.prisma.workspace.delete({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+      }),
+    );
   }
   members(workspaceId: string) {
     return this.prisma.workspaceMember.findMany({

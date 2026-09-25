@@ -54,7 +54,15 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0",
+      "effect": "3.20.0"
+    }
+  },
   "jest": {
+    "coverageProvider": "v8",
+    "roots": ["<rootDir>/src"],
     "moduleFileExtensions": [
       "js",
       "json",

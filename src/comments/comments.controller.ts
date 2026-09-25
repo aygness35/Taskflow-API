@@ -1,3 +1,4 @@
+import { VersionDto } from '../common/version.dto';
 import {
   Body,
   Controller,
@@ -47,7 +48,8 @@ export class CommentsController {
   @Delete('comments/:id') @WorkspaceResource('comment') @HttpCode(204) remove(
     @Param('id') id: string,
     @CurrentAccess() access: Access,
+    @Query() version: VersionDto,
   ) {
-    return this.comments.remove(id, access);
+    return this.comments.remove(id, access, version.expectedUpdatedAt);
   }
 }

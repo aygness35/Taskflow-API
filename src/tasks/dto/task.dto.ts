@@ -1,9 +1,15 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  PartialType,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { VersionDto } from '../../common/version.dto';
+import { IsDateTime } from '../../common/date-time.validator';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
   IsIn,
-  IsISO8601,
   IsString,
   IsUUID,
   Length,
@@ -37,17 +43,20 @@ export class CreateTaskDto {
   priority?: Priority;
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
   @ValidateIf((_o, v) => v !== undefined && v !== null)
-  @IsISO8601({ strict: true })
+  @IsDateTime()
   dueDate?: string | null;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   @ValidateIf((_o, v) => v !== undefined && v !== null)
   @IsUUID('4')
   assigneeId?: string | null;
 }
-export class UpdateTaskDto extends PartialType(CreateTaskDto, {
-  skipNullProperties: false,
-}) {}
-export class AssignTaskDto {
+export class UpdateTaskDto extends IntersectionType(
+  PartialType(CreateTaskDto, {
+    skipNullProperties: false,
+  }),
+  VersionDto,
+) {}
+export class AssignTaskDto extends VersionDto {
   @ApiProperty({
     type: String,
     format: 'uuid',

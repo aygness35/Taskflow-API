@@ -1,3 +1,4 @@
+import { VersionDto } from '../common/version.dto';
 import {
   Body,
   Controller,
@@ -8,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
@@ -52,8 +54,8 @@ export class WorkspacesController {
   @WorkspaceResource('workspace')
   @Roles(Role.OWNER)
   @HttpCode(204)
-  remove(@Param('id') id: string) {
-    return this.workspaces.remove(id);
+  remove(@Param('id') id: string, @Query() version: VersionDto) {
+    return this.workspaces.remove(id, version.expectedUpdatedAt);
   }
   @Get(':id/members') @WorkspaceResource('workspace') members(
     @Param('id') id: string,

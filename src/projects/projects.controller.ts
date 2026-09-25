@@ -1,3 +1,4 @@
+import { VersionDto } from '../common/version.dto';
 import {
   Body,
   Controller,
@@ -49,7 +50,7 @@ export class ProjectsController {
   @WorkspaceResource('project')
   @Roles(Role.OWNER, Role.ADMIN)
   @HttpCode(204)
-  remove(@Param('id') id: string) {
-    return this.projects.remove(id);
+  remove(@Param('id') id: string, @Query() version: VersionDto) {
+    return this.projects.remove(id, version.expectedUpdatedAt);
   }
 }

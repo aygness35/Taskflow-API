@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { versionMatch, versionStamp, withVersion } from '../common/version';
 import { paginated, pagination } from '../common/pagination.dto';
 import {
   CreateProjectDto,
@@ -28,9 +29,19 @@ export class ProjectsService {
     return this.prisma.project.findUniqueOrThrow({ where: { id } });
   }
   update(id: string, dto: UpdateProjectDto) {
-    return this.prisma.project.update({ where: { id }, data: dto });
+    const { expectedUpdatedAt, ...data } = dto;
+    return withVersion(expectedUpdatedAt, () =>
+      this.prisma.project.update({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+        data: { ...data, ...versionStamp(expectedUpdatedAt) },
+      }),
+    );
   }
-  async remove(id: string) {
-    await this.prisma.project.delete({ where: { id } });
+  async remove(id: string, expectedUpdatedAt: string) {
+    await withVersion(expectedUpdatedAt, () =>
+      this.prisma.project.delete({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+      }),
+    );
   }
 }

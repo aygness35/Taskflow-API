@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { versionMatch, versionStamp, withVersion } from '../common/version';
 import { Access } from '../common/decorators';
 import { Role } from '../common/enums';
 import { paginated, pagination, PaginationDto } from '../common/pagination.dto';
@@ -30,9 +31,15 @@ export class CommentsService {
     });
     if (comment.authorId !== userId)
       throw new ForbiddenException('Only the author can edit this comment');
-    return this.prisma.comment.update({ where: { id }, data: dto });
+    const { expectedUpdatedAt, ...data } = dto;
+    return withVersion(expectedUpdatedAt, () =>
+      this.prisma.comment.update({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+        data: { ...data, ...versionStamp(expectedUpdatedAt) },
+      }),
+    );
   }
-  async remove(id: string, access: Access) {
+  async remove(id: string, access: Access, expectedUpdatedAt: string) {
     const comment = await this.prisma.comment.findUniqueOrThrow({
       where: { id },
     });
@@ -40,6 +47,10 @@ export class CommentsService {
       throw new ForbiddenException(
         'Only the author or workspace administrators can delete this comment',
       );
-    await this.prisma.comment.delete({ where: { id } });
+    await withVersion(expectedUpdatedAt, () =>
+      this.prisma.comment.delete({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+      }),
+    );
   }
 }

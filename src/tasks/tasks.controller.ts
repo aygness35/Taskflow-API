@@ -1,3 +1,4 @@
+import { VersionDto } from '../common/version.dto';
 import {
   Body,
   Controller,
@@ -57,7 +58,8 @@ export class TasksController {
   @Delete('tasks/:id') @WorkspaceResource('task') @HttpCode(204) remove(
     @Param('id') id: string,
     @CurrentAccess() access: Access,
+    @Query() version: VersionDto,
   ) {
-    return this.tasks.remove(id, access);
+    return this.tasks.remove(id, access, version.expectedUpdatedAt);
   }
 }

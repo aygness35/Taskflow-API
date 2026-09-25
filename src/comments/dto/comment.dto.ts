@@ -1,4 +1,5 @@
-import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { ApiProperty, PartialType, IntersectionType } from '@nestjs/swagger';
+import { VersionDto } from '../../common/version.dto';
 import { Transform } from 'class-transformer';
 import { IsString, Length } from 'class-validator';
 export class CreateCommentDto {
@@ -8,6 +9,9 @@ export class CreateCommentDto {
   @Length(1, 2000)
   content!: string;
 }
-export class UpdateCommentDto extends PartialType(CreateCommentDto, {
-  skipNullProperties: false,
-}) {}
+export class UpdateCommentDto extends IntersectionType(
+  PartialType(CreateCommentDto, {
+    skipNullProperties: false,
+  }),
+  VersionDto,
+) {}

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { versionMatch, versionStamp, withVersion } from '../common/version';
 import { Access } from '../common/decorators';
 import { Role } from '../common/enums';
 import { paginated, pagination } from '../common/pagination.dto';
@@ -63,32 +64,40 @@ export class TasksService {
     return this.prisma.task.findUniqueOrThrow({ where: { id } });
   }
   async update(id: string, access: Access, dto: UpdateTaskDto) {
+    const { expectedUpdatedAt, ...data } = dto;
     return this.prisma.$transaction(async (tx) => {
       await this.validateAssignee(tx, access.workspaceId, dto.assigneeId);
-      return tx.task.update({
-        where: { id },
-        data: {
-          ...dto,
-          dueDate:
-            dto.dueDate === undefined
-              ? undefined
-              : dto.dueDate === null
-                ? null
-                : new Date(dto.dueDate),
-        },
-      });
+      return withVersion(expectedUpdatedAt, () =>
+        tx.task.update({
+          where: { id, ...versionMatch(expectedUpdatedAt) },
+          data: {
+            ...data,
+            ...versionStamp(expectedUpdatedAt),
+            dueDate:
+              dto.dueDate === undefined
+                ? undefined
+                : dto.dueDate === null
+                  ? null
+                  : new Date(dto.dueDate),
+          },
+        }),
+      );
     });
   }
   assign(id: string, access: Access, dto: AssignTaskDto) {
     return this.update(id, access, dto);
   }
-  async remove(id: string, access: Access) {
+  async remove(id: string, access: Access, expectedUpdatedAt: string) {
     const task = await this.get(id);
     if (access.role === Role.MEMBER && task.createdById !== access.userId)
       throw new ForbiddenException(
         'Only the creator or workspace administrators can delete this task',
       );
-    await this.prisma.task.delete({ where: { id } });
+    await withVersion(expectedUpdatedAt, () =>
+      this.prisma.task.delete({
+        where: { id, ...versionMatch(expectedUpdatedAt) },
+      }),
+    );
   }
   private async validateAssignee(
     tx: Prisma.TransactionClient,

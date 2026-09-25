@@ -7,10 +7,15 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { NextFunction, Request, Response } from 'express';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 export function setupApp(app: INestApplication) {
   const config = app.get(ConfigService);
   app.use(helmet());
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.enableCors({
     origin: config
       .getOrThrow<string>('CORS_ORIGINS')
