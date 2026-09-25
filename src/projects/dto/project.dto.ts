@@ -4,13 +4,22 @@ import { CreateWorkspaceDto } from '../../workspaces/dto/workspace.dto';
 import { PaginationDto } from '../../common/pagination.dto';
 import { ProjectStatus } from '../../common/enums';
 export class CreateProjectDto extends CreateWorkspaceDto {
-  @ApiPropertyOptional({ maxLength: 2000, nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2000)
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsString()
+  @MaxLength(2000)
   description?: string | null;
-  @ApiPropertyOptional({ enum: ProjectStatus, default: ProjectStatus.ACTIVE }) @ValidateIf((_o, v) => v !== undefined) @IsEnum(ProjectStatus)
+  @ApiPropertyOptional({ enum: ProjectStatus, default: ProjectStatus.ACTIVE })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsEnum(ProjectStatus)
   status?: ProjectStatus;
 }
-export class UpdateProjectDto extends PartialType(CreateProjectDto, { skipNullProperties: false }) {}
+export class UpdateProjectDto extends PartialType(CreateProjectDto, {
+  skipNullProperties: false,
+}) {}
 export class ListProjectsDto extends PaginationDto {
-  @ApiPropertyOptional({ enum: ProjectStatus }) @ValidateIf((_o, v) => v !== undefined) @IsEnum(ProjectStatus)
+  @ApiPropertyOptional({ enum: ProjectStatus })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsEnum(ProjectStatus)
   status?: ProjectStatus;
 }

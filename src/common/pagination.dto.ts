@@ -2,12 +2,30 @@ import { Type } from 'class-transformer';
 import { IsInt, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 export class PaginationDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 }) @Type(() => Number) @IsInt() @Min(1) @Max(1000000)
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
   page = 1;
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 }) @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit = 20;
 }
-export function pagination(q: PaginationDto) { return { skip: (q.page - 1) * q.limit, take: q.limit }; }
+export function pagination(q: PaginationDto) {
+  return { skip: (q.page - 1) * q.limit, take: q.limit };
+}
 export function paginated<T>(data: T[], total: number, q: PaginationDto) {
-  return { data, meta: { total, page: q.page, limit: q.limit, totalPages: Math.ceil(total / q.limit) } };
+  return {
+    data,
+    meta: {
+      total,
+      page: q.page,
+      limit: q.limit,
+      totalPages: Math.ceil(total / q.limit),
+    },
+  };
 }
