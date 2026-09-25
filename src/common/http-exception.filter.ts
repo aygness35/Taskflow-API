@@ -47,15 +47,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
         'Unhandled request failure',
         exception instanceof Error ? exception.stack : undefined,
       );
-    ctx
-      .getResponse<Response>()
-      .status(status)
-      .json({
-        statusCode: status,
-        message,
-        error,
-        timestamp: new Date().toISOString(),
-        path: ctx.getRequest<Request>().path,
-      });
+    ctx.getResponse<Response>().status(status).json({
+      statusCode: status,
+      message,
+      error,
+      timestamp: new Date().toISOString(),
+      path: ctx.getRequest<Request>().path,
+    });
   }
 }
