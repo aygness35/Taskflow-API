@@ -27,10 +27,10 @@ export class CommentsController {
   constructor(private readonly comments: CommentsService) {}
   @Post('tasks/:taskId/comments') @WorkspaceResource('task', 'taskId') create(
     @Param('taskId') id: string,
-    @CurrentUser() userId: string,
+    @CurrentAccess() access: Access,
     @Body() dto: CreateCommentDto,
   ) {
-    return this.comments.create(id, userId, dto);
+    return this.comments.create(id, access, dto);
   }
   @Get('tasks/:taskId/comments') @WorkspaceResource('task', 'taskId') list(
     @Param('taskId') id: string,

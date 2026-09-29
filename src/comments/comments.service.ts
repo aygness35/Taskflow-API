@@ -8,9 +8,38 @@ import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 @Injectable()
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
-  create(taskId: string, userId: string, dto: CreateCommentDto) {
-    return this.prisma.comment.create({
-      data: { ...dto, taskId, authorId: userId },
+  async create(taskId: string, access: Access, dto: CreateCommentDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.task.findUniqueOrThrow({
+        where: { id: taskId },
+        select: { title: true, assigneeId: true, createdById: true },
+      });
+      const comment = await tx.comment.create({
+        data: { ...dto, taskId, authorId: access.userId },
+      });
+      await tx.activityLog.create({
+        data: {
+          workspaceId: access.workspaceId,
+          taskId,
+          actorId: access.userId,
+          action: 'COMMENT_ADDED',
+          details: dto.content.slice(0, 120),
+        },
+      });
+      const recipients = [
+        ...new Set([task.assigneeId, task.createdById]),
+      ].filter((id): id is string => !!id && id !== access.userId);
+      if (recipients.length)
+        await tx.notification.createMany({
+          data: recipients.map((userId) => ({
+            userId,
+            taskId,
+            type: 'COMMENT_ADDED',
+            title: 'Göreve yeni yorum',
+            message: task.title,
+          })),
+        });
+      return comment;
     });
   }
   async list(taskId: string, q: PaginationDto) {

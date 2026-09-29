@@ -19,3 +19,8 @@ export enum Priority {
   HIGH = 'HIGH',
   URGENT = 'URGENT',
 }
+export enum Recurrence {
+  DAILY = 'DAILY',
+  WEEKLY = 'WEEKLY',
+  MONTHLY = 'MONTHLY',
+}

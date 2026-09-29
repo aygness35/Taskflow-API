@@ -7,6 +7,7 @@ import { setupApp } from '../src/setup';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RemindersService } from '../src/notifications/reminders.service';
 
 describe('TaskFlow API', () => {
   let app: INestApplication;
@@ -535,6 +536,98 @@ describe('TaskFlow API', () => {
       .expect(403);
   });
 
+  it('supports labels, checklists, notifications, activity, attachments and dashboard reporting', async () => {
+    await api()
+      .patch(`/tasks/${task}/assign`)
+      .set('Authorization', bearer(alice))
+      .send({ assigneeId: bobId, ...(await version('task', task)) })
+      .expect(200);
+    const label = await api()
+      .post(`/workspaces/${workspace}/labels`)
+      .set('Authorization', bearer(alice))
+      .send({ name: 'Backend', color: '#7d8d65' })
+      .expect(201);
+    await api()
+      .post(`/tasks/${task}/labels`)
+      .set('Authorization', bearer(alice))
+      .send({ labelId: label.body.id })
+      .expect(201);
+    const labels = await api()
+      .get(`/tasks/${task}/labels`)
+      .set('Authorization', bearer(bob))
+      .expect(200);
+    expect(labels.body.map((item: { name: string }) => item.name)).toContain(
+      'Backend',
+    );
+
+    const checklist = await api()
+      .post(`/tasks/${task}/checklist`)
+      .set('Authorization', bearer(bob))
+      .send({ title: 'Review the API' })
+      .expect(201);
+    await api()
+      .patch(`/tasks/${task}/checklist/${checklist.body.id}`)
+      .set('Authorization', bearer(bob))
+      .send({ completed: true })
+      .expect(200);
+
+    const attachment = await api()
+      .post(`/tasks/${task}/attachments`)
+      .set('Authorization', bearer(alice))
+      .attach('file', Buffer.from('TaskFlow proof'), {
+        filename: 'proof.txt',
+        contentType: 'text/plain',
+      })
+      .expect(201);
+    const downloaded = await api()
+      .get(`/tasks/${task}/attachments/${attachment.body.id}/download`)
+      .set('Authorization', bearer(bob))
+      .expect(200);
+    expect(downloaded.headers['content-disposition']).toContain('proof.txt');
+
+    const activities = await api()
+      .get(`/tasks/${task}/activity`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(
+      activities.body.some(
+        (item: { action: string }) => item.action === 'ATTACHMENT_ADDED',
+      ),
+    ).toBe(true);
+    expect(
+      activities.body.some(
+        (item: { action: string }) => item.action === 'CHECKLIST_COMPLETED',
+      ),
+    ).toBe(true);
+
+    const notifications = await api()
+      .get('/notifications')
+      .set('Authorization', bearer(bob))
+      .expect(200);
+    expect(notifications.body.unread).toBeGreaterThan(0);
+    await api()
+      .patch(`/notifications/${notifications.body.data[0].id}/read`)
+      .set('Authorization', bearer(bob))
+      .expect(200);
+    await api()
+      .patch('/notifications/read-all')
+      .set('Authorization', bearer(bob))
+      .expect(204);
+
+    const dashboard = await api()
+      .get(`/workspaces/${workspace}/dashboard`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(dashboard.body.total).toBeGreaterThan(0);
+    expect(dashboard.body.byAssignee).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          user: expect.objectContaining({ id: bobId }),
+        }),
+      ]),
+    );
+  });
+
   it('rejects stale edits on every versioned resource and concurrent task assignment', async () => {
     for (const [url, data, token, current] of [
       [
@@ -811,14 +904,161 @@ describe('TaskFlow API', () => {
     expect(result.body.assigneeId).toBeNull();
   });
 
-  it('serves Swagger with all 31 endpoints and applies security headers and CORS', async () => {
+  it('supports recurrence, subtasks, lifecycle, export and invitation links', async () => {
+    const created = await api()
+      .post(`/projects/${project}/tasks`)
+      .set('Authorization', bearer(alice))
+      .send({
+        title: 'Weekly planning',
+        dueDate: '2099-01-01T12:00:00Z',
+        recurrence: 'WEEKLY',
+        recurrenceEnd: '2099-03-01T12:00:00Z',
+      })
+      .expect(201);
+    const parentId = created.body.id;
+    await api()
+      .post(`/tasks/${parentId}/subtasks`)
+      .set('Authorization', bearer(alice))
+      .send({ title: 'Prepare agenda' })
+      .expect(201);
+    const subtasks = await api()
+      .get(`/tasks/${parentId}/subtasks`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(subtasks.body).toHaveLength(1);
+
+    const completed = await api()
+      .patch(`/tasks/${parentId}`)
+      .set('Authorization', bearer(alice))
+      .send({ status: 'DONE', ...(await version('task', parentId)) })
+      .expect(200);
+    const repeated = await api()
+      .get(`/projects/${project}/tasks?search=Weekly%20planning`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(repeated.body.meta.total).toBe(2);
+    expect(repeated.body.data.some((item: { status: string }) => item.status === 'TODO')).toBe(true);
+
+    const archived = await api()
+      .patch(`/tasks/${parentId}/archive`)
+      .set('Authorization', bearer(alice))
+      .send({ expectedUpdatedAt: completed.body.updatedAt })
+      .expect(200);
+    const archive = await api()
+      .get(`/workspaces/${workspace}/archive`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(archive.body.some((item: { id: string }) => item.id === parentId)).toBe(true);
+    const restored = await api()
+      .patch(`/tasks/${parentId}/restore`)
+      .set('Authorization', bearer(alice))
+      .send({ expectedUpdatedAt: archived.body.updatedAt })
+      .expect(200);
+    const trashed = await api()
+      .patch(`/tasks/${parentId}/trash`)
+      .set('Authorization', bearer(alice))
+      .send({ expectedUpdatedAt: restored.body.updatedAt })
+      .expect(200);
+    const trash = await api()
+      .get(`/workspaces/${workspace}/trash`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(trash.body.some((item: { id: string }) => item.id === parentId)).toBe(true);
+    await api()
+      .patch(`/tasks/${parentId}/restore`)
+      .set('Authorization', bearer(alice))
+      .send({ expectedUpdatedAt: trashed.body.updatedAt })
+      .expect(200);
+
+    const exported = await api()
+      .get(`/workspaces/${workspace}/export`)
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(exported.headers['content-type']).toContain('text/csv');
+    expect(exported.text).toContain('Weekly planning');
+
+    const invitation = await api()
+      .post(`/workspaces/${workspace}/invitations`)
+      .set('Authorization', bearer(alice))
+      .send({ email: 'outsider@example.com', role: 'MEMBER' })
+      .expect(201);
+    await api()
+      .get(`/workspaces/invitations/${invitation.body.token}`)
+      .expect(200);
+    await api()
+      .post(`/workspaces/invitations/${invitation.body.token}/accept`)
+      .set('Authorization', bearer(outsider))
+      .expect(201);
+  });
+
+  it('searches the workspace globally and creates automatic due reminders once', async () => {
+    const now = new Date();
+    const created = await api()
+      .post(`/projects/${project}/tasks`)
+      .set('Authorization', bearer(alice))
+      .send({
+        title: 'Global reminder probe',
+        description: 'Searchable delivery milestone',
+        dueDate: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+        assigneeId: aliceId,
+      })
+      .expect(201);
+    await api()
+      .post(`/tasks/${created.body.id}/comments`)
+      .set('Authorization', bearer(alice))
+      .send({ content: 'Unique discussion needle' })
+      .expect(201);
+
+    const taskSearch = await api()
+      .get(`/workspaces/${workspace}/search`)
+      .query({ q: 'Global reminder' })
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(taskSearch.body.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: created.body.id }),
+      ]),
+    );
+    const commentSearch = await api()
+      .get(`/workspaces/${workspace}/search`)
+      .query({ q: 'discussion needle' })
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(commentSearch.body.comments[0].task.id).toBe(created.body.id);
+
+    const reminders = app.get(RemindersService);
+    expect(await reminders.scan(now)).toBe(1);
+    expect(await reminders.scan(now)).toBe(0);
+    const dueSoon = await api()
+      .get('/notifications')
+      .set('Authorization', bearer(alice))
+      .expect(200);
+    expect(dueSoon.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: created.body.id,
+          type: 'TASK_DUE_SOON',
+        }),
+      ]),
+    );
+
+    const overdueDate = new Date(now.getTime() - 60 * 60 * 1000);
+    await prisma.task.update({
+      where: { id: created.body.id },
+      data: { dueDate: overdueDate },
+    });
+    expect(await reminders.scan(now)).toBe(1);
+    expect(await reminders.scan(now)).toBe(0);
+  });
+
+  it('serves Swagger with all 62 endpoints and applies security headers and CORS', async () => {
     await api().get('/api/docs/').expect(200);
     const docs = await api().get('/api/docs-json').expect(200);
     const count = Object.values(docs.body.paths).reduce<number>(
       (sum, p) => sum + Object.keys(p as object).length,
       0,
     );
-    expect(count).toBe(31);
+    expect(count).toBe(62);
     const expected: Record<string, string[]> = {
       '/auth/register': ['post'],
       '/auth/login': ['post'],
@@ -833,10 +1073,35 @@ describe('TaskFlow API', () => {
       '/workspaces/{workspaceId}/projects': ['get', 'post'],
       '/projects/{id}': ['get', 'patch', 'delete'],
       '/projects/{projectId}/tasks': ['get', 'post'],
+      '/projects/{projectId}/calendar': ['get'],
       '/tasks/{id}': ['get', 'patch', 'delete'],
       '/tasks/{id}/assign': ['patch'],
+      '/tasks/{id}/subtasks': ['get', 'post'],
+      '/tasks/{id}/archive': ['patch'],
+      '/tasks/{id}/trash': ['patch'],
+      '/tasks/{id}/restore': ['patch'],
       '/tasks/{taskId}/comments': ['get', 'post'],
       '/comments/{id}': ['patch', 'delete'],
+      '/workspaces/{workspaceId}/labels': ['get', 'post'],
+      '/tasks/{taskId}/labels': ['get', 'post'],
+      '/tasks/{taskId}/labels/{labelId}': ['delete'],
+      '/tasks/{taskId}/checklist': ['get', 'post'],
+      '/tasks/{taskId}/checklist/{itemId}': ['patch', 'delete'],
+      '/tasks/{taskId}/activity': ['get'],
+      '/tasks/{taskId}/attachments': ['get', 'post'],
+      '/tasks/{taskId}/attachments/{attachmentId}/download': ['get'],
+      '/tasks/{taskId}/attachments/{attachmentId}': ['delete'],
+      '/workspaces/{workspaceId}/dashboard': ['get'],
+      '/workspaces/{workspaceId}/search': ['get'],
+      '/workspaces/{workspaceId}/archive': ['get'],
+      '/workspaces/{workspaceId}/trash': ['get'],
+      '/workspaces/{workspaceId}/export': ['get'],
+      '/workspaces/{id}/invitations': ['post'],
+      '/workspaces/invitations/{token}': ['get'],
+      '/workspaces/invitations/{token}/accept': ['post'],
+      '/notifications': ['get'],
+      '/notifications/{id}/read': ['patch'],
+      '/notifications/read-all': ['patch'],
     };
     for (const [path, methods] of Object.entries(expected))
       expect(Object.keys(docs.body.paths[path]).sort()).toEqual(methods.sort());

@@ -16,6 +16,7 @@ import {
   Access,
   CurrentAccess,
   CurrentUser,
+  Public,
   Roles,
   WorkspaceResource,
 } from '../common/decorators';
@@ -67,6 +68,24 @@ export class WorkspacesController {
   @Roles(Role.OWNER, Role.ADMIN)
   addMember(@CurrentAccess() access: Access, @Body() dto: AddMemberDto) {
     return this.workspaces.addMember(access, dto);
+  }
+  @Post(':id/invitations')
+  @WorkspaceResource('workspace')
+  @Roles(Role.OWNER, Role.ADMIN)
+  invite(@CurrentAccess() access: Access, @Body() dto: AddMemberDto) {
+    return this.workspaces.invite(access, dto);
+  }
+  @Get('invitations/:token')
+  @Public()
+  invitePreview(@Param('token') token: string) {
+    return this.workspaces.invitePreview(token);
+  }
+  @Post('invitations/:token/accept')
+  acceptInvite(
+    @Param('token') token: string,
+    @CurrentUser() userId: string,
+  ) {
+    return this.workspaces.acceptInvite(token, userId);
   }
   @Patch(':id/members/:memberId')
   @WorkspaceResource('workspace')

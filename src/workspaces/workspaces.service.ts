@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { versionMatch, versionStamp, withVersion } from '../common/version';
 import { Access } from '../common/decorators';
@@ -75,6 +77,85 @@ export class WorkspacesService {
       include: { user: { select: publicUserSelect } },
     });
   }
+  async invite(access: Access, dto: AddMemberDto) {
+    if (access.role === Role.ADMIN && dto.role !== Role.MEMBER)
+      throw new ForbiddenException('Only owners can appoint administrators');
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 86400000);
+    const invite = await this.prisma.$transaction(async (tx) => {
+      await tx.workspaceInvite.deleteMany({
+        where: {
+          workspaceId: access.workspaceId,
+          email: dto.email,
+          acceptedAt: null,
+        },
+      });
+      return tx.workspaceInvite.create({
+        data: {
+          workspaceId: access.workspaceId,
+          email: dto.email,
+          role: dto.role,
+          tokenHash: this.inviteHash(token),
+          invitedById: access.userId,
+          expiresAt,
+        },
+        select: { id: true, email: true, role: true, expiresAt: true },
+      });
+    });
+    return { ...invite, token };
+  }
+  async invitePreview(token: string) {
+    const invite = await this.prisma.workspaceInvite.findFirst({
+      where: {
+        tokenHash: this.inviteHash(token),
+        acceptedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        email: true,
+        role: true,
+        expiresAt: true,
+        workspace: { select: { id: true, name: true } },
+        invitedBy: { select: { name: true } },
+      },
+    });
+    if (!invite) throw new NotFoundException('Invitation not found or expired');
+    return invite;
+  }
+  async acceptInvite(token: string, userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true },
+    });
+    const invite = await this.prisma.workspaceInvite.findFirst({
+      where: {
+        tokenHash: this.inviteHash(token),
+        acceptedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (!invite) throw new NotFoundException('Invitation not found or expired');
+    if (invite.email !== user.email)
+      throw new BadRequestException('Invitation email does not match this account');
+    await this.prisma.$transaction([
+      this.prisma.workspaceMember.upsert({
+        where: {
+          workspaceId_userId: { workspaceId: invite.workspaceId, userId },
+        },
+        create: {
+          workspaceId: invite.workspaceId,
+          userId,
+          role: invite.role,
+        },
+        update: {},
+      }),
+      this.prisma.workspaceInvite.update({
+        where: { id: invite.id },
+        data: { acceptedAt: new Date() },
+      }),
+    ]);
+    return this.get(invite.workspaceId);
+  }
   async changeRole(access: Access, memberId: string, dto: MemberRoleDto) {
     const target = await this.member(access.workspaceId, memberId);
     if (target.role === Role.OWNER)
@@ -118,5 +199,8 @@ export class WorkspacesService {
     if (!member)
       throw new NotFoundException('Member not found in this workspace');
     return member;
+  }
+  private inviteHash(token: string) {
+    return createHash('sha256').update(token).digest('hex');
   }
 }

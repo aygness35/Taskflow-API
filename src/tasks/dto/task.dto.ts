@@ -17,7 +17,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { PaginationDto } from '../../common/pagination.dto';
-import { Priority, TaskStatus } from '../../common/enums';
+import { Priority, Recurrence, TaskStatus } from '../../common/enums';
 export class CreateTaskDto {
   @ApiProperty({
     minLength: 3,
@@ -49,6 +49,16 @@ export class CreateTaskDto {
   @ValidateIf((_o, v) => v !== undefined && v !== null)
   @IsUUID('4')
   assigneeId?: string | null;
+
+  @ApiPropertyOptional({ enum: Recurrence, nullable: true })
+  @ValidateIf((_o, value) => value !== undefined && value !== null)
+  @IsEnum(Recurrence)
+  recurrence?: Recurrence | null;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  @ValidateIf((_o, value) => value !== undefined && value !== null)
+  @IsDateTime()
+  recurrenceEnd?: string | null;
 }
 export class UpdateTaskDto extends IntersectionType(
   PartialType(CreateTaskDto, {
@@ -94,4 +104,35 @@ export class ListTasksDto extends PaginationDto {
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsIn(['asc', 'desc'])
   sortOrder: 'asc' | 'desc' = 'desc';
+}
+
+export class CalendarTasksDto {
+  @ApiProperty({ type: String, format: 'date-time' })
+  @IsDateTime()
+  from!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  @IsDateTime()
+  to!: string;
+
+  @ApiPropertyOptional({ enum: TaskStatus })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsEnum(TaskStatus)
+  status?: TaskStatus;
+
+  @ApiPropertyOptional({ enum: Priority })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsEnum(Priority)
+  priority?: Priority;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsUUID('4')
+  assigneeId?: string;
+
+  @ApiPropertyOptional({ maxLength: 150 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(150)
+  search?: string;
 }

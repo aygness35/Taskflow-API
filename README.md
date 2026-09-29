@@ -66,6 +66,17 @@ Bu hesaplar yalnızca yerel deneme içindir.
 - Görev atama, durum ve öncelik değiştirme.
 - Yorum ekleme, düzenleme ve silme.
 - Görevlerde arama, filtreleme, sıralama ve sayfalama.
+- Proje takvimi ve tarih aralığına göre görev sorgulama.
+- Görev etiketleri, kontrol listeleri ve aktivite geçmişi.
+- Alt görevler ve günlük, haftalık veya aylık tekrarlanan görevler.
+- Görevleri arşive veya çöp kutusuna taşıma ve geri yükleme.
+- Çalışma alanı görevlerini CSV olarak dışa aktarma.
+- Süresi dolan, tek kullanımlık bağlantılarla e-posta daveti akışı.
+- Atama ve yorum bildirimleri ile okunma takibi.
+- Son tarihi 24 saat içinde olan ve geciken görevler için otomatik hatırlatmalar.
+- Proje, görev, yorum ve ekip üyelerini kapsayan çalışma alanı genelinde arama.
+- Çalışma alanı durum, öncelik ve ekip ilerleme raporları.
+- Görevlere 5 MB'a kadar PNG, JPG, PDF, TXT, DOCX ve XLSX dosyası ekleme.
 
 Kullanıcılar yalnızca üyesi oldukları çalışma alanlarına erişebilir. Projeleri OWNER ve ADMIN yönetir; tüm üyeler görev oluşturabilir ve güncelleyebilir. Görevleri oluşturan kişi veya yöneticiler silebilir. Yorumları yalnızca yazarı düzenleyebilir; yazarı veya yöneticiler silebilir. Çalışma alanını yalnızca OWNER silebilir; bu işlem bağlı projeleri, görevleri ve yorumları da siler.
 
@@ -73,6 +84,10 @@ Görev durumları: `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
 Öncelikler: `LOW`, `MEDIUM`, `HIGH`, `URGENT`.
 
 Tüm uç noktalar ve istek alanları Swagger'da bulunur. API rotalarının başında `/api` yoktur.
+
+Takvim uç noktası en fazla 62 günlük bir aralık kabul eder. Dosya ekleri SQLite
+veritabanında saklanır; canlı ortamda nesne depolama ve dosya taraması ayrıca
+yapılandırılmalıdır.
 
 ## Ayarlar
 
@@ -94,6 +109,10 @@ Veriler `prisma/dev.db` dosyasında saklanır. `.env` ve veritabanını paylaşm
 - Erişim tokenı 15 dakika, yenileme tokenı 7 gün geçerlidir. Yenileme işleminde dönen yeni tokenı kullan; eski token tekrar kullanılamaz. Çıkıştan sonra erişim tokenı süresi dolana kadar geçerli kalır.
 - Görev listesinde `search`, `status`, `priority`, `assigneeId`, `page`, `limit`, `sortBy` ve `sortOrder` kullanılabilir. Varsayılan sayfa boyutu 20, en yüksek değer 100'dür.
 - Tarihleri saat dilimiyle gönder: `2099-01-01T12:00:00+03:00`. Yanıtlar UTC kullanır. Yeni görevin bitiş tarihi geçmişte olamaz.
+- Tekrarlanan bir görev tamamlandığında API sıradaki görevi otomatik oluşturur. Tekrar seçenekleri `DAILY`, `WEEKLY` ve `MONTHLY` değerleridir.
+- Arşivlenen ve çöp kutusuna taşınan görevler normal proje listelerinde gösterilmez. Çöp kutusundaki bir görev kalıcı olarak silinebilir.
+- Davet uç noktası 7 gün geçerli bir bağlantı üretir. Frontend bu bağlantıyı kopyalama veya kullanıcının e-posta uygulamasında gönderme seçeneklerini sunar.
+- Hatırlatıcı servis dakikada bir çalışır. Aynı görev ve son tarih için yaklaşan/geciken bildirimi yalnızca bir kez üretir; görev atanmamışsa bildirimi görevi oluşturan kullanıcı alır.
 - Çalışma alanı, proje, görev, görev ataması ve yorum güncellemelerinde `expectedUpdatedAt` zorunludur. Son okuduğun kaydın `updatedAt` değerini istek gövdesine ekle. Aynı kaynakları silerken bu değeri sorgu parametresi olarak gönder. Eksik/geçersiz değer 400, başka bir düzenlemeden dolayı eski kalan değer 409 döndürür; işlem yapılmaz. Profil ve üyelik işlemleri bu sürüm sözleşmesine dahil değildir.
 - Şifre sıfırlama, e-posta doğrulama ve çalışma alanı sahipliği devri henüz yoktur.
 
