@@ -1,37 +1,103 @@
 ﻿# TaskFlow API
 
-Ekiplerin çalışma alanı, proje ve görevlerini yönetmesi için hazırlanmış bir REST API. NestJS, TypeScript, Prisma ve SQLite kullanır. Bu depo yalnızca backend'i içerir; API'yi Swagger veya Postman üzerinden deneyebilirsin.
+TaskFlow, ekiplerin çalışma alanları, projeler ve görevler üzerinden iş takibini yönetmesini sağlayan bir REST API uygulamasıdır.
+
+Backend tarafı **NestJS, TypeScript, Prisma ve SQLite** kullanılarak geliştirilmiştir. Frontend ayrı bir React + TypeScript uygulaması olarak API ile haberleşir.
+
+## Özellikler
+
+- Kullanıcı kayıt, giriş, token yenileme ve çıkış işlemleri
+- JWT tabanlı kimlik doğrulama
+- Çalışma alanı ve ekip üyesi yönetimi
+- Proje oluşturma, düzenleme ve silme
+- Görev oluşturma, düzenleme ve silme
+- Görev atama, durum ve öncelik yönetimi
+- Görev yorumları
+- Görev arama, filtreleme, sıralama ve sayfalama
+- Proje takvimi ve tarih aralığına göre görev sorgulama
+- Alt görevler ve tekrarlanan görevler
+- Görev etiketleri, kontrol listeleri ve aktivite geçmişi
+- Arşiv ve çöp kutusu işlemleri
+- Görevleri CSV olarak dışa aktarma
+- E-posta davet akışı
+- Atama ve yorum bildirimleri
+- Yaklaşan ve geciken görevler için otomatik hatırlatmalar
+- Çalışma alanı genelinde arama
+- Çalışma alanı durum, öncelik ve ekip ilerleme raporları
+- Görevlere dosya ekleme
+- Swagger API dokümantasyonu
+- E2E testleri
+- Optimistic concurrency kontrolü
+
+## Kullanılan Teknolojiler
+
+- **NestJS**
+- **TypeScript**
+- **Prisma ORM**
+- **SQLite**
+- **JWT**
+- **Swagger / OpenAPI**
+- **Jest**
+- **Supertest**
+
+## Proje Yapısı
+
+```text
+Taskflow_API/
+├── src/        # API modülleri ve uygulama kodları
+├── prisma/     # Veritabanı şeması, migration'lar ve seed
+├── test/       # E2E testleri
+└── scripts/    # Kurulum ve yardımcı scriptler
+```
+
+## Gereksinimler
+
+- Node.js 22 LTS
+- npm
+
+SQLite kullanıldığı için ayrıca bir veritabanı sunucusu kurulması gerekmez.
 
 ## Kurulum
 
-Node.js 22 LTS ve npm gerekir. SQLite kullandığı için ayrıca veritabanı sunucusu kurmana gerek yok.
+Projeyi klonladıktan sonra ana klasörde:
 
-Projeyi indirdikten sonra ana klasörde çalıştır:
-
-```sh
+```bash
 npm ci
 npm run setup
 npx prisma migrate deploy
 npm run start:dev
 ```
 
-`setup`, gerekli `.env` dosyasını ve JWT anahtarlarını oluşturur; mevcut ayarları ve veritabanını korur.
+API varsayılan olarak:
 
-- API: http://localhost:3000
-- Swagger: http://localhost:3000/api/docs
+```text
+http://localhost:3000
+```
 
-Windows PowerShell, `npm` veya `npx` komutunu engellerse `npm.cmd` ve `npx.cmd` kullanabilirsin.
+adresinde çalışır.
 
-## API'yi deneme
+Swagger dokümantasyonu:
 
-1. Swagger sayfasını aç.
-2. `POST /auth/register` ile hesap oluştur veya `POST /auth/login` ile giriş yap.
-3. Yanıttaki `accessToken` değerini kopyalayıp **Authorize** alanına yapıştır.
+```text
+http://localhost:3000/api/docs
+```
+
+Windows PowerShell'de `npm` veya `npx` komutları engellenirse `npm.cmd` ve `npx.cmd` kullanılabilir.
+
+## API'yi Deneme
+
+Swagger arayüzünden API uç noktaları doğrudan test edilebilir.
+
+Temel kullanım akışı:
+
+1. `POST /auth/register` ile hesap oluştur.
+2. `POST /auth/login` ile giriş yap.
+3. Dönen `accessToken` değerini Swagger'daki **Authorize** alanında kullan.
 4. `POST /workspaces` ile çalışma alanı oluştur.
-5. Dönen çalışma alanı kimliğiyle `POST /workspaces/{workspaceId}/projects` üzerinden proje ekle.
-6. Proje kimliğiyle `POST /projects/{projectId}/tasks` üzerinden görev oluştur.
+5. Çalışma alanında proje oluştur.
+6. Projeye görev ekle.
 
-Kayıt için örnek istek gövdesi:
+Örnek kayıt isteği:
 
 ```json
 {
@@ -41,7 +107,7 @@ Kayıt için örnek istek gövdesi:
 }
 ```
 
-Görev oluşturmak için başlık yeterlidir:
+Örnek görev:
 
 ```json
 {
@@ -49,121 +115,197 @@ Görev oluşturmak için başlık yeterlidir:
 }
 ```
 
-Hazır verilerle denemek istersen ayrı bir terminalde `npm run seed` çalıştır. Örnek çalışma alanı ve görevlerle birlikte şu hesaplar oluşturulur:
+## Seed Verileri
+
+Yerel geliştirme ortamında örnek veriler oluşturmak için:
+
+```bash
+npm run seed
+```
+
+komutu kullanılabilir.
+
+Seed işlemi aşağıdaki örnek kullanıcıları oluşturur:
 
 | E-posta             | Şifre            | Rol    |
 | ------------------- | ---------------- | ------ |
 | `alice@example.com` | `TaskFlowDemo1!` | OWNER  |
 | `bob@example.com`   | `TaskFlowDemo1!` | MEMBER |
 
-Bu hesaplar yalnızca yerel deneme içindir.
+Bu hesaplar yalnızca yerel geliştirme ve test amacıyla kullanılmalıdır.
 
-## Özellikler
+## Yetkilendirme
 
-- Kayıt, giriş, token yenileme ve çıkış.
-- Çalışma alanı ve üye yönetimi.
-- Proje ve görev oluşturma, düzenleme ve silme.
-- Görev atama, durum ve öncelik değiştirme.
-- Yorum ekleme, düzenleme ve silme.
-- Görevlerde arama, filtreleme, sıralama ve sayfalama.
-- Proje takvimi ve tarih aralığına göre görev sorgulama.
-- Görev etiketleri, kontrol listeleri ve aktivite geçmişi.
-- Alt görevler ve günlük, haftalık veya aylık tekrarlanan görevler.
-- Görevleri arşive veya çöp kutusuna taşıma ve geri yükleme.
-- Çalışma alanı görevlerini CSV olarak dışa aktarma.
-- Süresi dolan, tek kullanımlık bağlantılarla e-posta daveti akışı.
-- Atama ve yorum bildirimleri ile okunma takibi.
-- Son tarihi 24 saat içinde olan ve geciken görevler için otomatik hatırlatmalar.
-- Proje, görev, yorum ve ekip üyelerini kapsayan çalışma alanı genelinde arama.
-- Çalışma alanı durum, öncelik ve ekip ilerleme raporları.
-- Görevlere 5 MB'a kadar PNG, JPG, PDF, TXT, DOCX ve XLSX dosyası ekleme.
+Kullanıcılar yalnızca üyesi oldukları çalışma alanlarına erişebilir.
 
-Kullanıcılar yalnızca üyesi oldukları çalışma alanlarına erişebilir. Projeleri OWNER ve ADMIN yönetir; tüm üyeler görev oluşturabilir ve güncelleyebilir. Görevleri oluşturan kişi veya yöneticiler silebilir. Yorumları yalnızca yazarı düzenleyebilir; yazarı veya yöneticiler silebilir. Çalışma alanını yalnızca OWNER silebilir; bu işlem bağlı projeleri, görevleri ve yorumları da siler.
+- OWNER ve ADMIN proje yönetimi yapabilir.
+- Tüm üyeler görev oluşturabilir ve güncelleyebilir.
+- Görevi oluşturan kişi veya yöneticiler görevleri silebilir.
+- Yorumları yalnızca yazarı düzenleyebilir.
+- Yorumları yazarı veya yöneticiler silebilir.
+- Çalışma alanını yalnızca OWNER silebilir.
 
-Görev durumları: `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
-Öncelikler: `LOW`, `MEDIUM`, `HIGH`, `URGENT`.
+Görev durumları:
 
-Tüm uç noktalar ve istek alanları Swagger'da bulunur. API rotalarının başında `/api` yoktur.
+```text
+TODO
+IN_PROGRESS
+IN_REVIEW
+DONE
+```
 
-Takvim uç noktası en fazla 62 günlük bir aralık kabul eder. Dosya ekleri SQLite
-veritabanında saklanır; canlı ortamda nesne depolama ve dosya taraması ayrıca
-yapılandırılmalıdır.
+Öncelikler:
 
-## Ayarlar
+```text
+LOW
+MEDIUM
+HIGH
+URGENT
+```
 
-Yerel ayarlar `.env` dosyasındadır. Başlangıç değerleri `.env.example` içinde bulunur.
+## API Tasarım Notları
 
-| Değişken             | Kullanımı                                             |
-| -------------------- | ----------------------------------------------------- |
-| `PORT`               | API portu; varsayılan `3000`                          |
-| `DATABASE_URL`       | SQLite dosyası; varsayılan `file:./dev.db`            |
-| `JWT_SECRET`         | Erişim tokenı anahtarı; setup oluşturur               |
-| `JWT_REFRESH_SECRET` | Ayrı yenileme tokenı anahtarı; setup oluşturur        |
-| `CORS_ORIGINS`       | API'ye tarayıcıdan bağlanmasına izin verilen adresler |
-| `NODE_ENV`           | `development`, `test` veya `production`               |
+Tüm API uç noktaları Swagger üzerinde dokümante edilmiştir.
 
-Veriler `prisma/dev.db` dosyasında saklanır. `.env` ve veritabanını paylaşma; projeyi alan kişi kurulum komutlarıyla kendi dosyalarını oluşturabilir.
+API rotalarının başında `/api` prefix'i bulunmaz.
 
-## Kullanım notları
+### Optimistic Concurrency
 
-- Erişim tokenı 15 dakika, yenileme tokenı 7 gün geçerlidir. Yenileme işleminde dönen yeni tokenı kullan; eski token tekrar kullanılamaz. Çıkıştan sonra erişim tokenı süresi dolana kadar geçerli kalır.
-- Görev listesinde `search`, `status`, `priority`, `assigneeId`, `page`, `limit`, `sortBy` ve `sortOrder` kullanılabilir. Varsayılan sayfa boyutu 20, en yüksek değer 100'dür.
-- Tarihleri saat dilimiyle gönder: `2099-01-01T12:00:00+03:00`. Yanıtlar UTC kullanır. Yeni görevin bitiş tarihi geçmişte olamaz.
-- Tekrarlanan bir görev tamamlandığında API sıradaki görevi otomatik oluşturur. Tekrar seçenekleri `DAILY`, `WEEKLY` ve `MONTHLY` değerleridir.
-- Arşivlenen ve çöp kutusuna taşınan görevler normal proje listelerinde gösterilmez. Çöp kutusundaki bir görev kalıcı olarak silinebilir.
-- Davet uç noktası 7 gün geçerli bir bağlantı üretir. Frontend bu bağlantıyı kopyalama veya kullanıcının e-posta uygulamasında gönderme seçeneklerini sunar.
-- Hatırlatıcı servis dakikada bir çalışır. Aynı görev ve son tarih için yaklaşan/geciken bildirimi yalnızca bir kez üretir; görev atanmamışsa bildirimi görevi oluşturan kullanıcı alır.
-- Çalışma alanı, proje, görev, görev ataması ve yorum güncellemelerinde `expectedUpdatedAt` zorunludur. Son okuduğun kaydın `updatedAt` değerini istek gövdesine ekle. Aynı kaynakları silerken bu değeri sorgu parametresi olarak gönder. Eksik/geçersiz değer 400, başka bir düzenlemeden dolayı eski kalan değer 409 döndürür; işlem yapılmaz. Profil ve üyelik işlemleri bu sürüm sözleşmesine dahil değildir.
-- Şifre sıfırlama, e-posta doğrulama ve çalışma alanı sahipliği devri henüz yoktur.
+Çalışma alanı, proje, görev, görev ataması ve yorum güncellemelerinde `expectedUpdatedAt` kullanılır.
 
-## Düzenleme ve silme örneği
-
-Önce detay veya liste yanıtından kaydın `updatedAt` değerini al. Görevi güncellerken:
+İstemci, son okuduğu kaydın `updatedAt` değerini güncelleme isteğinde gönderir:
 
 ```http
-PATCH /tasks/<gorev-id>
+PATCH /tasks/<task-id>
 Authorization: Bearer <accessToken>
 Content-Type: application/json
-
-{"status":"DONE","expectedUpdatedAt":"2026-09-25T12:00:00.000Z"}
 ```
 
-Görevi silerken:
+```json
+{
+  "status": "DONE",
+  "expectedUpdatedAt": "2026-09-25T12:00:00.000Z"
+}
+```
+
+Görev silme işleminde değer sorgu parametresi olarak gönderilir:
 
 ```http
-DELETE /tasks/<gorev-id>?expectedUpdatedAt=2026-09-25T12%3A00%3A00.000Z
+DELETE /tasks/<task-id>?expectedUpdatedAt=2026-09-25T12%3A00%3A00.000Z
 Authorization: Bearer <accessToken>
 ```
 
-Örnekteki tarihi sabit kullanma; sunucudan aldığın güncel değeri gönder. Sorgu parametresini `URLSearchParams` gibi bir araçla kodla. Başarılı güncellemenin döndürdüğü yeni `updatedAt` değerini sakla. 409 alırsan kaydı yeniden gösterip kullanıcıdan değişikliği incelemesini iste; otomatik olarak yeni sürümle tekrar yazma veya silme yapma. Bu alanı göndermeyen eski istemcilerin güncellenmesi gerekir.
+Gönderilen `expectedUpdatedAt` güncel değilse API `409 Conflict` döndürür ve işlem gerçekleştirilmez.
 
-Sürüm yalnızca ilgili kaydı korur. Çalışma alanı/proje silme işlemi alt kayıtları da sildiği için arayüzde ayrıca açık bir silme onayı gösterilmelidir; üst kaydın sürümü, alt kayıtların tüm değişikliklerini temsil etmez.
+Bu mekanizma, aynı kaydın farklı kullanıcılar tarafından eş zamanlı değiştirilmesi durumunda eski verinin yanlışlıkla üzerine yazılmasını önlemeye yardımcı olur.
 
-## Test ve derleme
+## Görev ve Takvim Özellikleri
 
-```sh
+API, görevlerin tarih bilgileri üzerinden takvim görünümünün desteklenmesini sağlar.
+
+Takvim sorguları en fazla **62 günlük** bir tarih aralığını kabul eder.
+
+Tekrarlanan görevler:
+
+- `DAILY`
+- `WEEKLY`
+- `MONTHLY`
+
+değerlerini destekler.
+
+Bir tekrarlanan görev tamamlandığında API bir sonraki görevi otomatik olarak oluşturabilir.
+
+## Dosya Ekleri
+
+Görevlere aşağıdaki dosya türleri eklenebilir:
+
+- PNG
+- JPG
+- PDF
+- TXT
+- DOCX
+- XLSX
+
+Dosya boyutu sınırı **5 MB**'dır.
+
+Geliştirme ortamında dosya ekleri SQLite veritabanında saklanır. Production ortamında nesne depolama ve dosya güvenliği ayrıca yapılandırılmalıdır.
+
+## Ortam Değişkenleri
+
+Yerel ayarlar `.env` dosyasında tutulur. Başlangıç değerleri `.env.example` dosyasında bulunur.
+
+Temel değişkenler:
+
+| Değişken             | Açıklama                        |
+| -------------------- | ------------------------------- |
+| `PORT`               | API portu                       |
+| `DATABASE_URL`       | SQLite veritabanı bağlantısı    |
+| `JWT_SECRET`         | Access token anahtarı           |
+| `JWT_REFRESH_SECRET` | Refresh token anahtarı          |
+| `CORS_ORIGINS`       | İzin verilen frontend adresleri |
+| `NODE_ENV`           | Çalışma ortamı                  |
+
+Gerçek `.env` dosyası ve veritabanı dosyası repoya eklenmemelidir.
+
+## Test ve Build
+
+Testleri çalıştırmak için:
+
+```bash
 npm test
+```
+
+E2E testleri:
+
+```bash
 npm run test:e2e
+```
+
+Build:
+
+```bash
 npm run build
+```
+
+Format kontrolü:
+
+```bash
 npm run format:check
 ```
 
-E2E testleri ayrı geçici SQLite veritabanında çalışır; mevcut verilerini değiştirmez.
+Production build'i çalıştırmak için:
 
-Bağımlılıkların bilinen güvenlik açıklarını kontrol etmek için `npm audit` çalıştırılabilir. Prisma 6.19'un yapılandırma bağımlılıklarındaki güvenlik düzeltmeleri için `package.json` içinde `deepmerge-ts` 8.0.0 ve `effect` 3.20.0 sürümleri `overrides` ile sabitlenmiştir. Prisma güncellenirken bu sabitlemelerin hâlâ gerekli olup olmadığı kontrol edilmelidir.
-
-Derlenmiş uygulamayı çalıştırmak için:
-
-```sh
+```bash
 npm run build
 npm start
 ```
 
-## Klasörler
+E2E testleri ayrı bir geçici SQLite veritabanı kullanır.
 
-- `src/`: API modülleri, yetkilendirme ve doğrulama kodları.
-- `prisma/`: Veritabanı şeması, migration'lar ve örnek veriler.
-- `test/`: Uçtan uca testler.
-- `scripts/`: Kurulum ve test yardımcıları.
+## Frontend
 
-Canlı ortam için HTTPS, kalıcı veritabanı depolaması ve yedekleme ayrıca yapılandırılmalıdır. Mevcut SQLite ve bellekte tutulan istek sınırı yapısı tek uygulama örneği için tasarlanmıştır.
+TaskFlow frontend'i ayrı bir repository olarak geliştirilmiştir.
+
+Frontend tarafında:
+
+- React
+- TypeScript
+- Vite
+
+kullanılır.
+
+Frontend, backend API ile HTTP istekleri üzerinden haberleşir.
+
+## Geliştirme Notları
+
+TaskFlow, ekip içi proje ve görev yönetimi senaryolarını uygulamalı olarak geliştirmek amacıyla hazırlanmıştır.
+
+Backend ve frontend ayrı servisler olarak çalışır. Yerel geliştirme ortamında backend varsayılan olarak `3000`, frontend ise `3001` portunu kullanır.
+
+Production kullanımı için HTTPS, kalıcı veritabanı depolaması, yedekleme, güvenlik ve dosya depolama yapılandırmaları ayrıca yapılmalıdır.
+
+Henüz desteklenmeyen bazı özellikler:
+
+- Şifre sıfırlama
+- E-posta doğrulama
+- Çalışma alanı sahipliği devri
